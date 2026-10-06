@@ -201,6 +201,7 @@ export const chat_completion_sources = {
     SILICONFLOW: 'siliconflow',
     WORKERS_AI: 'workers_ai',
     MINIMAX: 'minimax',
+    REKA: 'reka',
 };
 
 const character_names_behavior = {
@@ -346,6 +347,7 @@ export const settingsToUpdate = {
     moonshot_model: ['#model_moonshot_select', 'moonshot_model', false, true],
     fireworks_model: ['#model_fireworks_select', 'fireworks_model', false, true],
     cometapi_model: ['#model_cometapi_select', 'cometapi_model', false, true],
+    reka_model: ['#model_reka_select', 'reka_model', false, true],
     custom_model: ['#custom_model_id', 'custom_model', false, true],
     custom_url: ['#custom_api_url_text', 'custom_url', false, true],
     custom_include_body: ['#custom_include_body', 'custom_include_body', false, true],
@@ -461,6 +463,7 @@ const default_settings = {
     pollinations_model: 'openai',
     pollinations_endpoint: POLLINATIONS_ENDPOINT.AUTHENTICATED,
     cometapi_model: 'gpt-4o',
+    reka_model: 'reka-edge-2603',
     moonshot_model: 'kimi-latest',
     fireworks_model: 'accounts/fireworks/models/kimi-k2-instruct',
     zai_model: 'glm-4.6',
@@ -1775,6 +1778,8 @@ export function getChatCompletionModel(settings = null) {
             return settings.zai_model;
         case chat_completion_sources.WORKERS_AI:
             return settings.workers_ai_model;
+        case chat_completion_sources.REKA:
+            return settings.reka_model;
         default:
             console.error(`Unknown chat completion source: ${source}`);
             return '';
@@ -2338,6 +2343,25 @@ function saveModelList(data) {
         }
 
         $('#model_workers_ai_select').val(oai_settings.workers_ai_model).trigger('change');
+    }
+
+    if (oai_settings.chat_completion_source === chat_completion_sources.REKA) {
+        $('#model_reka_select').empty();
+        model_list.sort((a, b) => (a?.id || '').localeCompare(b?.id || ''));
+        model_list.forEach((model) => {
+            $('#model_reka_select').append(
+                $('<option>', {
+                    value: model.id,
+                    text: model.name || model.id,
+                }));
+        });
+
+        const selectedModel = model_list.find(model => model.id === oai_settings.reka_model);
+        if (model_list.length > 0 && (!selectedModel || !oai_settings.reka_model)) {
+            oai_settings.reka_model = model_list[0].id;
+        }
+
+        $('#model_reka_select').val(oai_settings.reka_model).trigger('change');
     }
 
     if (oai_settings.chat_completion_source === chat_completion_sources.COMETAPI) {
@@ -3288,7 +3312,7 @@ export function getStreamingReply(data, state, { chatCompletionSource = null, ov
             }
         });
         return data.choices?.[0]?.delta?.content ?? data.choices?.[0]?.message?.content ?? data.choices?.[0]?.text ?? '';
-    } else if ([chat_completion_sources.CUSTOM, chat_completion_sources.POLLINATIONS, chat_completion_sources.AIMLAPI, chat_completion_sources.MOONSHOT, chat_completion_sources.COMETAPI, chat_completion_sources.ELECTRONHUB, chat_completion_sources.NANOGPT, chat_completion_sources.ZAI, chat_completion_sources.SILICONFLOW, chat_completion_sources.CHUTES, chat_completion_sources.WORKERS_AI, chat_completion_sources.FIREWORKS].includes(chat_completion_source)) {
+    } else if ([chat_completion_sources.CUSTOM, chat_completion_sources.POLLINATIONS, chat_completion_sources.AIMLAPI, chat_completion_sources.MOONSHOT, chat_completion_sources.COMETAPI, chat_completion_sources.ELECTRONHUB, chat_completion_sources.NANOGPT, chat_completion_sources.ZAI, chat_completion_sources.SILICONFLOW, chat_completion_sources.CHUTES, chat_completion_sources.WORKERS_AI, chat_completion_sources.FIREWORKS, chat_completion_sources.REKA].includes(chat_completion_source)) {
         if (show_thoughts) {
             state.reasoning +=
                 data.choices?.filter(x => x?.delta?.reasoning_content)?.[0]?.delta?.reasoning_content ??
@@ -5411,6 +5435,31 @@ function getFireworksMaxContext(model, isUnlocked) {
 }
 
 /**
+ * Get the maximum context size for the Reka model
+ * @param {string} model Model identifier
+ * @param {boolean} isUnlocked Whether context limits are unlocked
+ * @returns {number} Maximum context size in tokens
+ */
+function getRekaMaxContext(model, isUnlocked) {
+    if (isUnlocked) {
+        return unlocked_max;
+    }
+
+    // Prefer the context length reported by /v1/models
+    if (Array.isArray(model_list) && model_list.length > 0) {
+        const modelInfo = model_list.find((record) => record.id === model);
+        if (modelInfo?.context_length) {
+            return modelInfo.context_length;
+        }
+        if (modelInfo?.context_window) {
+            return modelInfo.context_window;
+        }
+    }
+
+    return max_32k;
+}
+
+/**
  * Get the maximum context size for the Chutes model
  * @param {string} model Model identifier
  * @param {boolean} isUnlocked Whether context limits are unlocked
@@ -5670,6 +5719,15 @@ async function onModelChange() {
         }
         console.log('CometAPI model changed to', value);
         oai_settings.cometapi_model = value;
+    }
+
+    if ($(this).is('#model_reka_select')) {
+        if (!value || !hasModelsLoaded) {
+            console.debug('Null Reka model selected. Ignoring.');
+            return;
+        }
+        console.log('Reka model changed to', value);
+        oai_settings.reka_model = value;
     }
 
     if ($(this).is('#azure_openai_model')) {
@@ -5994,6 +6052,15 @@ async function onModelChange() {
         $('#temp_openai').attr('max', oai_max_temp).val(oai_settings.temp_openai).trigger('input');
     }
 
+    if (oai_settings.chat_completion_source === chat_completion_sources.REKA) {
+        const maxContext = getRekaMaxContext(oai_settings.reka_model, oai_settings.max_context_unlocked);
+        $('#openai_max_context').attr('max', maxContext);
+        oai_settings.openai_max_context = Math.min(Number($('#openai_max_context').attr('max')), oai_settings.openai_max_context);
+        $('#openai_max_context').val(oai_settings.openai_max_context).trigger('input');
+        oai_settings.temp_openai = Math.min(oai_max_temp, oai_settings.temp_openai);
+        $('#temp_openai').attr('max', oai_max_temp).val(oai_settings.temp_openai).trigger('input');
+    }
+
     if (oai_settings.chat_completion_source === chat_completion_sources.MINIMAX) {
         const maxContext = oai_settings.minimax_model === 'M2-her' ? 65536 : 204800;
         $('#openai_max_context').attr('max', maxContext);
@@ -6065,6 +6132,7 @@ async function onConnectButtonClick(e) {
         [chat_completion_sources.POLLINATIONS]: { key: SECRET_KEYS.POLLINATIONS, selector: '#api_key_pollinations', proxy: false, keyless: oai_settings.pollinations_endpoint === POLLINATIONS_ENDPOINT.ANONYMOUS },
         [chat_completion_sources.WORKERS_AI]: { key: SECRET_KEYS.WORKERS_AI, selector: '#api_key_workers_ai', proxy: false },
         [chat_completion_sources.MINIMAX]: { key: SECRET_KEYS.MINIMAX, selector: '#api_key_minimax', proxy: false },
+        [chat_completion_sources.REKA]: { key: SECRET_KEYS.REKA, selector: '#api_key_reka', proxy: false },
     };
 
     // Vertex AI Express version - use API key
@@ -6132,6 +6200,8 @@ function toggleChatCompletionForms() {
         $('#model_siliconflow_select').trigger('change');
     } else if (oai_settings.chat_completion_source == chat_completion_sources.MINIMAX) {
         $('#model_minimax_select').trigger('change');
+    } else if (oai_settings.chat_completion_source == chat_completion_sources.REKA) {
+        $('#model_reka_select').trigger('change');
     } else if (oai_settings.chat_completion_source == chat_completion_sources.ELECTRONHUB) {
         $('#model_electronhub_select').trigger('change');
     } else if (oai_settings.chat_completion_source == chat_completion_sources.NANOGPT) {
@@ -6358,6 +6428,8 @@ export function isImageInliningSupported() {
         }
         case chat_completion_sources.FIREWORKS:
             return (Array.isArray(model_list) && model_list.find(m => m.id === oai_settings.fireworks_model)?.supports_image_input);
+        case chat_completion_sources.REKA:
+            return (Array.isArray(model_list) && model_list.find(m => m.id === oai_settings.reka_model)?.input_modalities?.includes('image'));
         default:
             return false;
     }
@@ -7368,6 +7440,7 @@ export function initOpenAI() {
     $('#model_chutes_select').on('change', onModelChange);
     $('#model_siliconflow_select').on('change', onModelChange);
     $('#model_minimax_select').on('change', onModelChange);
+    $('#model_reka_select').on('change', onModelChange);
     $('#model_electronhub_select').on('change', onModelChange);
     $('#model_nanogpt_select').on('change', onModelChange);
     $('#model_deepseek_select').on('change', onModelChange);

@@ -646,6 +646,7 @@ export class ToolManager {
                 case chat_completion_sources.AIMLAPI:
                     return currentModel.features?.includes('openai/chat-completion.function');
                 case chat_completion_sources.CHUTES:
+                case chat_completion_sources.REKA:
                     return currentModel.supported_features?.includes('tools');
                 case chat_completion_sources.ELECTRONHUB:
                     return currentModel.metadata?.function_call;
@@ -680,6 +681,7 @@ export class ToolManager {
             chat_completion_sources.NANOGPT,
             chat_completion_sources.WORKERS_AI,
             chat_completion_sources.MINIMAX,
+            chat_completion_sources.REKA,
         ];
         return supportedSources.includes(settings.chat_completion_source);
     }
