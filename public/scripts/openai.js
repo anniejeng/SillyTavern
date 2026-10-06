@@ -463,7 +463,7 @@ const default_settings = {
     pollinations_model: 'openai',
     pollinations_endpoint: POLLINATIONS_ENDPOINT.AUTHENTICATED,
     cometapi_model: 'gpt-4o',
-    reka_model: 'reka-edge-2603',
+    reka_model: 'glm5.3-flash',
     moonshot_model: 'kimi-latest',
     fireworks_model: 'accounts/fireworks/models/kimi-k2-instruct',
     zai_model: 'glm-4.6',
